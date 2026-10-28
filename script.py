@@ -209,22 +209,7 @@ def encode_semantic_ver(semver) -> str:
     patch = semver & 0xFFFF
     return f"v{major}.{minor}.{patch}"
 
-def fetch_latest_version():
-    """Fetch the latest version from GitHub"""
-    try:
-        url = f"{VERSION_CHECK_URL}?t={int(time.time())}"
-        response = requests.get(url, timeout=5, headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
-        print(f"Version check status: {response.status_code}")
-        print(f"Version check raw response: {repr(response.text)}")
-        if response.status_code == 200:
-            latest = response.text.strip()
-            print(f"Parsed latest version: {repr(latest)}")
-            return latest
-    except Exception as e:
-        print(f"Failed to fetch latest version: {e}")
-    return None
-
-def _fetch_latest_version() -> int:
+def fetch_latest_version() -> int:
     """Fetch the latest version from Github"""
     try:
         url = RELEASE_URL
@@ -242,24 +227,15 @@ def _fetch_latest_version() -> int:
         print(f"Failed to get latest version: {e}")
     return -1
 
-def _has_update():
-    """Check if an update is available"""
-    latest = _fetch_latest_version()
-    if latest > 0:
-        current = parse_semantic_ver(CURRENT_SEMVER)
-        print(f"Checking for updates: current={encode_semantic_ver(current)} latest={encode_semantic_ver(latest)}")
-        return latest > current
-    return False
-
 def has_update():
     """Check if an update is available"""
-    latest = _fetch_latest_version()
-    if latest:
-        current = parse_semantic_ver(CURRENT_SEMVER)
-        latest_encoded = encode_semantic_ver(latest)
-        print(f"Comparing: current={encode_semantic_ver(current)} latest={latest_encoded} update={latest > current}")
-        return latest > current
-    return False
+    latest = fetch_latest_version()
+    if latest < 0:
+        return False
+    current = parse_semantic_ver(CURRENT_SEMVER)
+    latest_encoded = encode_semantic_ver(latest)
+    print(f"Comparing: current={encode_semantic_ver(current)} latest={latest_encoded} update={latest > current}")
+    return latest > current
 
 def fetch_icon():
     try:
@@ -335,10 +311,10 @@ def version_check_thread(icon):
         current_time = time.time()
         if current_time - last_check >= check_interval:
             try:
-                new_update = _has_update()
+                new_update = has_update()
                 if new_update and not update_available:
                     update_available = True
-                    print(f"Update available! Current: {encode_semantic_ver(CURRENT_SEMVER)}, Latest: {encode_semantic_ver(_fetch_latest_version())}")
+                    print(f"Update available! Current: {encode_semantic_ver(CURRENT_SEMVER)}, Latest: {encode_semantic_ver(fetch_latest_version())}")
                     icon.update_menu()
                 elif not new_update and update_available:
                     update_available = False
@@ -383,7 +359,7 @@ def startup_network_tasks(icon: pystray._base.Icon):
                 global update_available
                 update_available = True
                 icon.update_menu()
-                print(f"Update available! Current: {encode_semantic_ver(CURRENT_SEMVER)}, Latest: {encode_semantic_ver(_fetch_latest_version())}")
+                print(f"Update available! Current: {encode_semantic_ver(CURRENT_SEMVER)}, Latest: {encode_semantic_ver(fetch_latest_version())}")
         except Exception as e:
             print(f"Initial version check failed: {e}")
 
