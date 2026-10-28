@@ -17,6 +17,8 @@ REPO_URL = f"https://github.com/{REPO_SHORTURL}"
 RELEASE_URL = f"https://api.github.com/repos/{REPO_SHORTURL}/releases/latest"
 CURRENT_SEMVER = "v1.1.0"
 
+ICON_URL = f"https://cdn.jsdelivr.net/gh/{REPO_SHORTURL}@main/assets/UGA.png"
+
 # Current version - update this when releasing new versions
 CURRENT_VERSION = "1.0"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/atomic12321/UGA-LAUNCHER/main/latestversion"
@@ -243,7 +245,7 @@ def has_update():
 
 def fetch_icon():
     try:
-        url = "https://cdn.jsdelivr.net/gh/atomic1232/UGA-LAUNCHER@main/UGA.jpg"
+        url = ICON_URL
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
             return Image.open(io.BytesIO(response.content))
