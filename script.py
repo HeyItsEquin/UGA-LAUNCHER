@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import time
+import struct
 import tkinter as tk
 from tkinter import messagebox
 import webbrowser
@@ -17,7 +18,7 @@ REPO_URL = f"https://github.com/{REPO_SHORTURL}"
 RELEASE_URL = f"https://api.github.com/repos/{REPO_SHORTURL}/releases/latest"
 CURRENT_SEMVER = "v1.1.0"
 
-ICON_URL = f"https://cdn.jsdelivr.net/gh/{REPO_SHORTURL}@main/assets/UGA.png"
+ICON_URL = f"https://cdn.jsdelivr.net/gh/{REPO_SHORTURL}@main/assets/UGA-Logo.png"
 
 # Current version - update this when releasing new versions
 CURRENT_VERSION = "1.0"
@@ -140,9 +141,26 @@ def dis_ib() -> None:
             # Unpacks the data tuple directly to avoid TypeError crashes
             raw_data, reg_type = QueryValueEx(connections, "DefaultConnectionSettings")
             settings = bytearray(raw_data)
-            
-            settings[0x4:0x8] = (int.from_bytes(settings[0x4:0x8], "little") + 1).to_bytes(4, "little")
-            settings[0x8:0xC] = (0x1).to_bytes(4, "little")
+
+            # There is barely any known documentation for this specific registry key
+            # all that we currently know about it is from meticulous reverse engineering
+
+            (version, change_counter, proxy_flags) = struct.unpack_from("<III", settings, 0)
+
+            change_counter += 1
+
+            # What we *think* the flags are as of right now (LTR)
+            # bit 1 (0x01) Direct connection (no proxy)
+            # bit 2 (0x02) Use manually configured proxy
+            # bit 3 (0x04) Use automatic configuration script
+            # bit 4 (0x08) Automatically detect proxy settings
+
+            # Overrides the entire flag mask and sets it to direct connection only
+            # this might've worked a couple years ago on IBoss, but we're long past that time
+            proxy_flags = 0x01
+
+            struct.pack_into("<III", settings, 0,
+                             version, change_counter, proxy_flags)
             
             SetValueEx(connections, "DefaultConnectionSettings", 0, REG_BINARY, bytes(settings))
     except Exception as e:
@@ -235,12 +253,12 @@ def _has_update():
 
 def has_update():
     """Check if an update is available"""
-    latest = fetch_latest_version()
+    latest = _fetch_latest_version()
     if latest:
-        current = parse_version(CURRENT_VERSION)
-        latest_parsed = parse_version(latest)
-        print(f"Comparing: current={current} latest={latest_parsed} update={latest_parsed > current}")
-        return latest_parsed > current
+        current = parse_semantic_ver(CURRENT_SEMVER)
+        latest_encoded = encode_semantic_ver(latest)
+        print(f"Comparing: current={encode_semantic_ver(current)} latest={latest_encoded} update={latest > current}")
+        return latest > current
     return False
 
 def fetch_icon():
@@ -313,7 +331,7 @@ def version_check_thread(icon):
     check_interval = 3600  # Check every hour
     last_check = 0
     
-    while True:
+    while not should_stop:
         current_time = time.time()
         if current_time - last_check >= check_interval:
             try:
@@ -333,7 +351,7 @@ def version_check_thread(icon):
 
 def dis_ib_thread():
     """Separate thread for dis_ib() to avoid blocking main loop"""
-    while True:
+    while not should_stop:
         if running:
             try:
                 dis_ib()
@@ -343,7 +361,7 @@ def dis_ib_thread():
 
 def background_loop():
     """Background loop that handles process suspension/killing"""
-    while True:
+    while not should_stop:
         if running:
             try:
                 find_procs_fast_suspend(r"C:\Program Files\Securly\Classroom\1.3.34.8\SlingshotApp.exe")
@@ -369,10 +387,11 @@ def startup_network_tasks(icon: pystray._base.Icon):
         except Exception as e:
             print(f"Initial version check failed: {e}")
 
-if __name__ == "__main__":
-    running = True
-    update_available = False
+should_stop = False
+running = True
+update_available = False
 
+if __name__ == "__main__":
     try:
         dis_clal()
     except Exception:
@@ -392,8 +411,11 @@ if __name__ == "__main__":
         ),
     )
 
-    threading.Thread(target=startup_network_tasks, daemon=True, args=(icon)).start()
-    threading.Thread(target=version_check_thread, daemon=True, args=(icon)).start()
+    threading.Thread(target=startup_network_tasks, daemon=True, args=[icon]).start()
+    threading.Thread(target=version_check_thread, daemon=True, args=[icon]).start()
     threading.Thread(target=dis_ib_thread, daemon=True).start()
     threading.Thread(target=background_loop, daemon=True).start()
-    icon.run()
+    try:
+        icon.run()
+    except KeyboardInterrupt:
+        should_stop = True
